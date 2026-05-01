@@ -1,0 +1,426 @@
+# dissertação Mysa
+
+##### CARREGANDO OS PACOTES ##### 
+
+{
+
+# funcao de carregamento das livrarias (caso nao esteja instalado, sera feita a instalacao auto)
+instalar_e_carregar <- function(pacotes) {
+  for (pacote in pacotes) {
+    if (!require(pacote, character.only = TRUE)) {
+      install.packages(pacote, dependencies = TRUE)
+      library(pacote, character.only = TRUE)
+    }
+  }
+}
+
+# Lista de livrarias que serao utilizados 
+pacotes_necessarios <- c("dplyr","tidyr","ggplot2","lubridate","data.table","stringr","janitor")
+
+#carregando pacotes 
+instalar_e_carregar(pacotes_necessarios)
+
+
+#Arregaça negão - Deus é contigo, independente de tudo voce ja é vencedor !!!
+
+##### CARREGANDO A BASE DOS ALUNOS ##### 
+
+setwd("C:/Users/Lucas Nobrega/Documents/Pos-dissertacao/dados dissertação")
+#list.files()
+
+base <- readRDS("BASEFINAL3.0.rds")
+
+
+#SEPARANDO O cpf da base os numeros que tenho para realizar o merge com os cpf do SISU
+base <- base %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 9)
+  )
+
+
+##### CARREGANDO AS LISTAS DOS SISU ##### 
+
+#lista dos sisus disponiveis no site https://dadosabertos.mec.gov.br/sisu?start=10
+
+setwd("C:/Users/Lucas Nobrega/Documents/Pos-dissertacao/dados dissertação/SISU")
+#sisu_2014_1 <- fread("ListagemChamadaRegular_2014_1.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2014_2 <- fread("ListagemChamadaRegular_2014_2.csv") %>% filter(sigla_ies == "UFRN")
+
+sisu_2015_1 <- fread("ListagemChamadaRegular_2015_1.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2015_2 <- fread("ListagemChamadaRegular_2015_2.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2015 <- bind_rows(sisu_2015_1, sisu_2015_2)
+
+sisu_2016_1 <- fread("ListagemChamadaRegular_2016_1.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2016_2 <- fread("ListagemChamadaRegular_2016_2.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2016 <- bind_rows(sisu_2016_1, sisu_2016_2)
+
+sisu_2017_1 <- fread("ListagemChamadaRegular_2017_1.csv") %>% filter(SIGLA_IES == "UFRN")
+#sisu_2017_2 <- fread("ListagemChamadaRegular_2017_2.csv") %>% filter(SIGLA_IES == "UFRN")
+#sisu_2017 <- bind_rows(sisu_2017_1, sisu_2017_2) #não teve segunda chama na ufrn
+#table(sisu_2017_2$DS_ETAPA)
+
+sisu_2018_1 <- fread("ListagemChamadaRegular_2018_1.csv") %>% filter(SIGLA_IES == "UFRN")
+#sisu_2018_2 <- fread("ListagemChamadaRegular_2018_2.csv") %>% filter(SIGLA_IES == "UFRN")
+#sisu_2018 <- bind_rows(sisu_2018_1, sisu_2018_2)
+
+sisu_2019_1 <- fread("ListagemChamadaRegular_2019_1.csv") %>% filter(SIGLA_IES == "UFRN")
+#sisu_2019_2 <- fread("ListagemChamadaRegular_2019_2.csv") %>% filter(SIGLA_IES == "UFRN")
+#sisu_2019 <- bind_rows(sisu_2019_1, sisu_2019_2)
+
+
+#rm(sisu_2015_1,sisu_2015_2,sisu_2016_1,sisu_2016_2,sisu_2017_1,sisu_2017_1,sisu_2018_1,
+#   sisu_2018_2,sisu_2019_1,sisu_2019_2)
+#sisu_2020_1 <- fread("ListagemChamadaRegular_2020_1.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2020_2 <- fread("ListagemChamadaRegular_2020_2.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2021_1 <- fread("ListagemChamadaRegular_2021_1.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2021_2 <- fread("ListagemChamadaRegular_2021_2.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2022_1 <- fread("ListagemChamadaRegular_2022_1.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2022_2 <- fread("ListagemChamadaRegular_2022_2.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2023_1 <- fread("ListagemChamadaRegular_2023_1.csv") %>% filter(sigla_ies == "UFRN")
+#sisu_2023_2 <- fread("ListagemChamadaRegular_2023_2.csv") %>% filter(sigla_ies == "UFRN")
+
+#PADRONIZANDO OS NOMES DAS COLUNAS DOS SISU - DICIONARIO
+padroniza_sisu <- function(df) {
+  df %>%
+    janitor::clean_names() %>%
+    rename_with(~tolower(.)) %>%
+    rename(
+      ano_sisu = any_of(c("nu_ano", "ano")),
+      edicao = any_of(c("nu_edicao", "edicao")),
+      etapa_codigo = any_of(c("co_etapa", "etapa")),
+      etapa_nome = ds_etapa,
+      
+      id_ies = any_of(c("cod_ies", "co_ies", "codigo_ies")),
+      nome_ies = any_of(c("ies", "no_ies", "nome_ies")),
+      uf_ies = any_of(c("uf_ies", "sg_uf_ies")),
+      
+      id_campus = any_of(c("cod_campus", "co_campus", "codigo_campus")),
+      nome_campus = any_of(c("campus", "no_campus", "nome_campus")),
+      
+      id_curso = any_of(c("codigo_curso", "co_ies_curso", "codigo_curso")),
+      nome_curso = any_of(c("nome_curso", "no_curso")),
+      
+      cpf = any_of(c("cpf", "nu_cpf")),
+      inscricao_enem = any_of(c("co_inscricao_enem", "inscricao_enem")),
+      
+      nome_candidato = any_of(c("no_inscrito", "inscrito")),
+      sexo = any_of(c("tp_sexo", "sexo")),
+      
+      nota_l = any_of(c("nu_nota_l", "nota_l")),
+      nota_ch = any_of(c("nu_nota_ch", "nota_ch")),
+      nota_cn = any_of(c("nu_nota_cn", "nota_cn")),
+      nota_m = any_of(c("nu_nota_m", "nota_m")),
+      nota_r = any_of(c("nu_nota_r", "nota_r")),
+      
+      nota_final = any_of(c("nota_concorrencia", "nu_nota_candidato", "nota_candidato")),
+      nota_corte = any_of(c("nu_notacorte", "nota_corte")),
+      
+      classificacao = any_of(c("nu_classificacao", "classificacao")),
+      aprovado = any_of(c("st_aprovado", "aprovado"))
+    )
+}
+
+sisu_2015_1 <- padroniza_sisu(sisu_2015_1)
+sisu_2016_1 <- padroniza_sisu(sisu_2016_1)
+sisu_2017_1 <- padroniza_sisu(sisu_2017_1)
+sisu_2018_1 <- padroniza_sisu(sisu_2018_1)
+sisu_2019_1 <- padroniza_sisu(sisu_2019_1)
+
+
+##### TRATANTO O SISU 2015 PARA O MERGE -OK ##### 
+#TRATANTO O SISU 2015 PARA O MERGE
+sisu_2015_1 <- sisu_2015_1 %>%
+  mutate(
+    cpf_meio = str_extract(cpf, "\\d{6}") #SEPARANDO O CPF (APENAS OS NUMEROS DISPONIVEIS)
+  ) #%>% select(cpf,cpf_meio)
+
+#mantendo apenas matriculas efetivadas
+sisu_2015_1 <- sisu_2015_1 %>%
+  filter(ds_matricula == "EFETIVADA")
+
+
+#mFILTRAR  A BASE PARA 2015
+base15 <- subset(base,ano_ingresso == 2015 )
+
+#DESTAQUE: a base do ano 2015 tem 2344 observação sendo que na lista do sisu
+#tem 3371 matriculas efeitvadas na Ufrn
+#ou seja a abase de 2015 corresponde a 69,5%
+
+
+#aqui não vai precisar
+#nomeando as colunas para deixar padrão em todas as bases
+#colnames(sisu_2016_1)
+
+#merge2015 <- merge2015 %>% select(
+#) 
+
+#setdiff(names(sisu_2016_1), names(sisu_2019_1))
+
+#proseguindo com o merge
+merge2015 <- base15 %>%
+  left_join(sisu_2015_1, by = c("nome" = "nome_candidato",
+                                "cpf_meio" = "cpf_meio"))
+
+#colnames(sisu_2019_1)
+#str(sisu_2019_1)
+#codigo_curso
+#renomeando para ficar padrão
+#merge2015 <- merge2015 %>% rename()
+
+
+rm(base15,sisu_2015_1)
+#base de 215 pronta.
+
+##### TRATANTO O SISU 2016 PARA O MERGE -OK ##### 
+#TRATANTO O SISU 2016 PARA O MERGE
+sisu_2016_1 <- sisu_2016_1 %>%
+  mutate(
+    cpf_meio = str_remove_all(cpf, "[^0-9]")
+  ) #%>% select(cpf,cpf_meio)
+
+#mantendo apenas matriculas efetivadas
+sisu_2016_1 <- sisu_2016_1 %>%
+  filter(st_matricula == "EFETIVADA" | 
+           st_matricula == "SUBSTITUIDA" )
+
+#pra ficar nomenclatura igual de 2015
+#sisu_2016_1 <- rename()
+
+#mFILTRAR  A BASE PARA 2015
+base16 <- subset(base,ano_ingresso == 2016)
+
+#colnames(merge2018)
+
+#proseguindo com o merge
+merge2016 <- base16 %>%
+  left_join(sisu_2016_1, by = c("nome" = "nome_candidato",
+                                "cpf_meio" = "cpf_meio"))
+
+#teste com dois Cpf e Nomes e teste so com meio do cpf, ambos retorna 0 no merge
+#inner_join(base16, sisu_2016_1,
+#           by = c("nome" = "no_inscrito",
+#                  "cpf_meio" = "cpf_meio")) %>% 
+#  nrow()
+
+#inner_join(base16, sisu_2016_1,
+#           by = c("cpf_meio" = "cpf_meio")) %>% 
+#  nrow()
+#str(base$cpf_meio)
+#inner_join(base16, sisu_2016_1,
+#           by = c("nome" = "no_inscrito")) %>% 
+#  nrow()
+
+rm(base16,sisu_2016_1)
+#base de 215 pronta.
+
+
+
+##### TRATANTO O SISU 2017 PARA O MERGE -OK ####
+#nenhuma alternativa funcionou manter a de 2015 e mege pelo nome mesmo
+#sisu_2017_1 <- sisu_2017_1 %>%
+#  mutate(
+#    cpf_meio = str_replace_all(NU_CPF, "\\D", "")
+#  )
+
+sisu_2017_1 <- sisu_2017_1 %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 11)
+  )
+
+#TRATANTO O SISU 2017 PARA O MERGE - AQUI É DIFERENTE 
+#sisu_2017_1 <- sisu_2017_1 %>%
+#  mutate(
+#    cpf_meio = str_extract(NU_CPF, "\\d{6}") #SEPARANDO O CPF (APENAS OS NUMEROS DISPONIVEIS)
+#  ) #%>% select(NU_CPF,cpf_meio)
+#sisu_2017_1 <- sisu_2017_1 %>%
+#  mutate(
+#    cpf_meio = str_remove_all(cpf, "[^0-9]")
+#  ) #%>% select(cpf,cpf_meio)
+
+#removendo os pontos
+sisu_2017_1 <- sisu_2017_1 %>% 
+  mutate(cpf_meio = str_remove_all(cpf_meio, "[.-]"))
+#SEPARANDO O CPF DA MESMA FORMA QUE REALIZEI NA BASE
+#sisu_2017_1t <- sisu_2017_1 %>%
+#  mutate(
+#    NU_CPF = str_pad(NU_CPF, 11, pad = "0"),
+#    cpf_meio = str_sub(NU_CPF, 4, 9)
+#  ) #%>%  select(NU_CPF,cpf_meio)
+
+#mantendo apenas matriculas efetivadas
+sisu_2017_1 <- sisu_2017_1 %>%
+  filter(aprovado == "S")
+
+#teste <- sisu_2017_1 %>% select(NO_CURSO,NO_INSCRITO,ST_APROVADO)
+
+#filtrando para ficar so 2017
+base17 <- subset(base,ano_ingresso == 2017) #questionamento a base tem um numero de observação menor de 2017 do que de inscrito
+
+
+#merge 2017 - BAQUI NÃO FUNCINOU O MERGE COM CPF E NOME, 
+#ENTÃO MANTIVE apenas o nome, por com Cpf não encontra
+#teste com dois Cpf e Nomes e teste so com meio do cpf, ambos retorna 0 no merge
+
+#inner_join(base17, sisu_2017_1,
+#           by = c("nome" = "nome_candidato",
+#                  "cpf_meio" = "cpf_meio")) %>% 
+# nrow()
+
+#inner_join(base17, sisu_2017_1,
+#           by = c("cpf_meio" = "cpf_meio")) %>% 
+#  nrow()
+#str(base$cpf_meio)
+#inner_join(base17, sisu_2017_1,
+#           by = c("nome" = "nome_candidato")) %>% 
+#  nrow()
+
+
+#solução utilizar o nome - funciona bem
+merge2017 <- base17 %>%
+  left_join(sisu_2017_1, by = c("nome" = "nome_candidato")) #%>% 
+  #select(nome,nome_curso,cpf_meio.x,cpf_meio.y,ST_APROVADO,)
+
+
+#merge2017 <- base17 %>%
+#  left_join(sisu_2017_1, by = "cpf_meio")
+#head(base17$nome)
+#head(sisu_2017_1$NO_INSCRITO)
+
+#numero de merge, se der 0 é pq não encontrou nenhum
+#inner_join(base17, sisu_2017_1,
+#           by = c("nome" = "nome_candidato",
+#                  "cpf_meio" = "cpf_meio")) %>% 
+#  nrow()
+
+rm(base17,sisu_2017_1)
+#2017 ok
+
+##### TRATANTO O SISU 2018 PARA O MERGE -OK ####
+
+#SEPARANDO O CPF DA MESMA FORMA QUE REALIZEI NA BASE - mesmo assim cof fica cagado
+sisu_2018_1 <- sisu_2018_1 %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 11)
+  ) #%>%  select(NU_CPF,cpf_meio)
+
+#removendo os pontos
+sisu_2018_1 <- sisu_2018_1 %>% 
+  mutate(cpf_meio = str_remove_all(cpf_meio,"\\."))
+
+
+#mantendo apenas matriculas efetivadas ou substituida pela mesma UF
+sisu_2018_1 <- sisu_2018_1 %>%
+  filter(matricula == "SUBSTITU\xcdDA MESMA IES" | 
+           matricula == "EFETIVADA" )
+
+#filtrando para ficar so 2018
+base18 <- subset(base,ano_ingresso == 2018)
+
+#merge 2018 - MERGE COM CPF E NOME, 
+merge2018 <- base18 %>%
+  left_join(sisu_2018_1, by = c("nome" = "nome_candidato",
+                                "cpf_meio" = "cpf_meio")) #%>% 
+#select(nome,nome_curso,cpf_meio.x,cpf_meio.y,ST_APROVADO,)
+
+rm(base18,sisu_2018_1)
+#2018 ok
+
+##### TRATANTO O SISU 2019 PARA O MERGE -OK ####
+
+#SEPARANDO O CPF DA MESMA FORMA QUE REALIZEI NA BASE
+sisu_2019_1 <- sisu_2019_1 %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 11)
+  ) #%>%  select(NU_CPF,cpf_meio)
+
+#removendo os pontos
+sisu_2019_1 <- sisu_2019_1 %>% 
+  mutate(cpf_meio = str_remove_all(cpf_meio,"\\."))
+
+#mantendo apenas matriculas efetivadas
+#sisu_2019_1 <- sisu_2019_1 %>%
+#  filter(ST_APROVADO == "S")
+
+sisu_2019_1 <- sisu_2019_1 %>%
+  filter(st_matricula == "EFETIVADA" )
+
+#teste <- sisu_2017_1 %>% select(NO_CURSO,NO_INSCRITO,ST_APROVADO)
+
+#filtrando para ficar so 2019
+base19 <- subset(base,ano_ingresso == 2019) #questionamento a base tem um numero de observação menor de 2017 do que de inscrito
+
+
+#merge 2019 - MERGE COM CPF E NOME, 
+merge2019 <- base19 %>%
+  left_join(sisu_2019_1, by = c("nome" = "nome_candidato",
+                                "cpf_meio" = "cpf_meio")) #%>% 
+#select(nome,nome_curso,cpf_meio.x,cpf_meio.y,ST_APROVADO,)
+
+rm(base19,sisu_2019_1)
+#2019 ok
+
+#ajuste para o merge
+
+#ajustando o titulo de 2018 pra ficar padrão
+merge2018 <- merge2018 %>%
+  rename(dt_nascimento = data_nascimento)
+
+
+# função para extrair ano e Padronizar dt_nascimeto
+extrair_ano <- function(x) {
+  ano_str <- str_extract(x, "\\d{2,4}$") # pega final
+  ano_num <- as.numeric(ano_str)
+  
+  ano_final <- ifelse(
+    nchar(ano_str) == 4, 
+    ano_num, 
+    ifelse(ano_num <= 25, 2000 + ano_num, 1900 + ano_num)
+  )
+  
+  return(ano_final)
+}
+
+merge2016 <- merge2016 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+merge2017 <- merge2017 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+merge2018 <- merge2018 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+merge2019 <- merge2019 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+#ajusta pra ficar numerico
+merge2015 <- merge2015 %>%
+  mutate(dt_nascimento = as.numeric(dt_nascimento))
+
+#ajustando tirando , e adicinando o ponto e class como numerico da 2019
+merge2019 <- merge2019 %>%
+  mutate(nota_corte = str_replace(nota_corte, ",", "."),
+         nota_corte = as.numeric(nota_corte))
+
+merge2019 <- merge2019 %>%
+  mutate(classificacao = as.integer(classificacao))
+
+#apagando a coluna de bonus que ja nao funciona e so atrapalha o merge
+merge2019 <- merge2019 %>%
+  select(-nu_percentual_bonus)
+
+
+#Juntar tudo
+base_final <- bind_rows(
+  merge2015,
+  merge2016,
+  merge2017,
+  merge2018,
+  merge2019
+)
+
+
+}
