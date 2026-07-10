@@ -1,0 +1,1774 @@
+############################################################
+# DISSERTAÇÃO MYSAEL
+# SCRIPT COMPLETO ORGANIZADO
+############################################################
+
+############################################################
+# 0. PACOTES
+############################################################
+
+instalar_e_carregar <- function(pacotes) {
+  for (pacote in pacotes) {
+    if (!require(pacote, character.only = TRUE)) {
+      install.packages(pacote, dependencies = TRUE)
+      library(pacote, character.only = TRUE)
+    }
+  }
+}
+
+pacotes_necessarios <- c(
+  "dplyr", "tidyr", "ggplot2", "lubridate", "data.table",
+  "stringr", "janitor", "gtsummary", "gt", "webshot2",
+  "survival", "survminer", "car", "ResourceSelection",
+  "sandwich", "lmtest", "pscl", "broom", "purrr",
+  "MatchIt", "cobalt", "pROC"
+)
+
+instalar_e_carregar(pacotes_necessarios)
+
+
+############################################################
+# 1. CAMINHO DOS ARQUIVOS
+############################################################
+
+#caminho_base <- "C:/Users/DELL/Desktop/Dissertacao/sisu-20260604T160711Z-3-001/sisu"
+caminho_base <- "C:/Users/Mysael Justino/Desktop/Dissertação/sisu"
+
+
+setwd(caminho_base)
+
+
+############################################################
+# 2. CARREGAMENTO DA BASE INSTITUCIONAL DA UFRN
+############################################################
+
+base <- readRDS("BASEFINAL3.0.rds")
+
+base <- base %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 9)
+  )
+
+base$raca[base$raca == "Negro"] <- "Preto"
+
+
+############################################################
+# 3. CARREGAMENTO DAS BASES SISU
+############################################################
+
+sisu_2015_1 <- fread("sisu_2015_1_ufrn.csv") %>%
+  filter(sigla_ies == "UFRN")
+
+sisu_2016_1 <- fread("sisu_2016_1_ufrn.csv") %>%
+  filter(sigla_ies == "UFRN")
+
+sisu_2017_1 <- fread("sisu_2017_1_ufrn.csv", encoding = "Latin-1")
+
+sisu_2018_1 <- fread("sisu_2018_1_ufrn.csv", encoding = "Latin-1")
+
+sisu_2019_1 <- fread("sisu_2019_1_ufrn.csv") %>%
+  filter(SIGLA_IES == "UFRN")
+
+
+############################################################
+# 4. PADRONIZAÇÃO DAS BASES SISU
+############################################################
+
+padroniza_sisu <- function(df) {
+  df %>%
+    janitor::clean_names() %>%
+    rename_with(~tolower(.)) %>%
+    rename(
+      ano_sisu = any_of(c("nu_ano", "ano")),
+      edicao = any_of(c("nu_edicao", "edicao")),
+      etapa_codigo = any_of(c("co_etapa", "etapa")),
+      etapa_nome = any_of(c("ds_etapa")),
+      
+      id_ies = any_of(c("cod_ies", "co_ies", "codigo_ies")),
+      nome_ies = any_of(c("ies", "no_ies", "nome_ies")),
+      uf_ies = any_of(c("uf_ies", "sg_uf_ies")),
+      
+      id_campus = any_of(c("cod_campus", "co_campus", "codigo_campus")),
+      nome_campus = any_of(c("campus", "no_campus", "nome_campus")),
+      
+      id_curso = any_of(c("codigo_curso", "co_ies_curso")),
+      nome_curso = any_of(c("nome_curso", "no_curso")),
+      
+      cpf = any_of(c("cpf", "nu_cpf")),
+      inscricao_enem = any_of(c("co_inscricao_enem", "inscricao_enem")),
+      
+      nome_candidato = any_of(c("no_inscrito", "inscrito")),
+      sexo = any_of(c("tp_sexo", "sexo")),
+      
+      nota_l = any_of(c("nu_nota_l", "nota_l")),
+      nota_ch = any_of(c("nu_nota_ch", "nota_ch")),
+      nota_cn = any_of(c("nu_nota_cn", "nota_cn")),
+      nota_m = any_of(c("nu_nota_m", "nota_m")),
+      nota_r = any_of(c("nu_nota_r", "nota_r")),
+      
+      nota_final = any_of(c("nota_concorrencia", "nu_nota_candidato", "nota_candidato")),
+      nota_corte = any_of(c("nu_notacorte", "nota_corte")),
+      
+      classificacao = any_of(c("nu_classificacao", "classificacao")),
+      aprovado = any_of(c("st_aprovado", "aprovado"))
+    )
+}
+
+sisu_2015_1 <- padroniza_sisu(sisu_2015_1)
+sisu_2016_1 <- padroniza_sisu(sisu_2016_1)
+sisu_2017_1 <- padroniza_sisu(sisu_2017_1)
+sisu_2018_1 <- padroniza_sisu(sisu_2018_1)
+sisu_2019_1 <- padroniza_sisu(sisu_2019_1)
+
+
+############################################################
+# 5. MERGE SISU 2015
+############################################################
+
+sisu_2015_1 <- sisu_2015_1 %>%
+  mutate(
+    cpf_meio = str_extract(cpf, "\\d{6}")
+  ) %>%
+  filter(ds_matricula == "EFETIVADA")
+
+base15 <- subset(base, ano_ingresso == 2015)
+
+merge2015 <- base15 %>%
+  left_join(
+    sisu_2015_1,
+    by = c(
+      "nome" = "nome_candidato",
+      "cpf_meio" = "cpf_meio"
+    )
+  )
+
+rm(base15, sisu_2015_1)
+
+
+############################################################
+# 6. MERGE SISU 2016
+############################################################
+
+sisu_2016_1 <- sisu_2016_1 %>%
+  mutate(
+    cpf_meio = str_remove_all(cpf, "[^0-9]")
+  ) %>%
+  filter(
+    st_matricula == "EFETIVADA" |
+      st_matricula == "SUBSTITUIDA"
+  )
+
+base16 <- subset(base, ano_ingresso == 2016)
+
+merge2016 <- base16 %>%
+  left_join(
+    sisu_2016_1,
+    by = c(
+      "nome" = "nome_candidato",
+      "cpf_meio" = "cpf_meio"
+    )
+  )
+
+rm(base16, sisu_2016_1)
+
+
+############################################################
+# 7. MERGE SISU 2017
+############################################################
+
+sisu_2017_1 <- sisu_2017_1 %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 11),
+    cpf_meio = str_remove_all(cpf_meio, "[.-]")
+  ) %>%
+  filter(aprovado == "S")
+
+base17 <- subset(base, ano_ingresso == 2017)
+
+merge2017 <- base17 %>%
+  left_join(
+    sisu_2017_1,
+    by = c("nome" = "nome_candidato")
+  )
+
+rm(base17, sisu_2017_1)
+
+
+############################################################
+# 8. MERGE SISU 2018
+############################################################
+
+sisu_2018_1 <- sisu_2018_1 %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 11),
+    cpf_meio = str_remove_all(cpf_meio, "\\.")
+  ) %>%
+  filter(
+    matricula == "SUBSTITU\xcdDA MESMA IES" |
+      matricula == "EFETIVADA"
+  )
+
+base18 <- subset(base, ano_ingresso == 2018)
+
+merge2018 <- base18 %>%
+  left_join(
+    sisu_2018_1,
+    by = c(
+      "nome" = "nome_candidato",
+      "cpf_meio" = "cpf_meio"
+    )
+  )
+
+rm(base18, sisu_2018_1)
+
+
+############################################################
+# 9. MERGE SISU 2019
+############################################################
+
+sisu_2019_1 <- sisu_2019_1 %>%
+  mutate(
+    cpf = str_pad(cpf, 11, pad = "0"),
+    cpf_meio = str_sub(cpf, 4, 11),
+    cpf_meio = str_remove_all(cpf_meio, "\\.")
+  ) %>%
+  filter(st_matricula == "EFETIVADA")
+
+base19 <- subset(base, ano_ingresso == 2019)
+
+merge2019 <- base19 %>%
+  left_join(
+    sisu_2019_1,
+    by = c(
+      "nome" = "nome_candidato",
+      "cpf_meio" = "cpf_meio"
+    )
+  )
+
+rm(base19, sisu_2019_1)
+
+
+############################################################
+# 10. AJUSTES PÓS-MERGE
+############################################################
+
+merge2018 <- merge2018 %>%
+  rename(dt_nascimento = data_nascimento)
+
+extrair_ano <- function(x) {
+  ano_str <- str_extract(x, "\\d{2,4}$")
+  ano_num <- as.numeric(ano_str)
+  
+  ano_final <- ifelse(
+    nchar(ano_str) == 4,
+    ano_num,
+    ifelse(ano_num <= 25, 2000 + ano_num, 1900 + ano_num)
+  )
+  
+  return(ano_final)
+}
+
+merge2016 <- merge2016 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+merge2017 <- merge2017 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+merge2018 <- merge2018 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+merge2019 <- merge2019 %>%
+  mutate(dt_nascimento = extrair_ano(dt_nascimento))
+
+merge2015 <- merge2015 %>%
+  mutate(dt_nascimento = as.numeric(dt_nascimento))
+
+merge2019 <- merge2019 %>%
+  mutate(
+    nota_corte = str_replace(nota_corte, ",", "."),
+    nota_corte = as.numeric(nota_corte),
+    classificacao = as.integer(classificacao)
+  )
+
+if ("nu_percentual_bonus" %in% names(merge2019)) {
+  merge2019 <- merge2019 %>%
+    select(-nu_percentual_bonus)
+}
+
+
+############################################################
+# 11. CONSTRUÇÃO DA BASE FINAL
+############################################################
+
+base_final <- bind_rows(
+  merge2015,
+  merge2016,
+  merge2017,
+  merge2018,
+  merge2019
+)
+
+rm(merge2015, merge2016, merge2017, merge2018, merge2019, base)
+
+base_final <- base_final %>%
+  mutate(
+    raca = factor(raca),
+    sexo.x = factor(sexo.x),
+    status = factor(status),
+    unidade_responsavel = factor(unidade_responsavel),
+    discente_estudou_em_escola_publica = factor(discente_estudou_em_escola_publica),
+    idade2 = idade^2
+  )
+
+base_final$raca <- relevel(
+  base_final$raca,
+  ref = "Branco"
+)
+
+#saveRDS(base_final, "base_final_dissertacao.rds")
+#transformando a variavel coorte em fator
+base_final$semestre <- factor(base_final$semestre)
+
+
+############################################################
+# 12. ESTATÍSTICAS DESCRITIVAS
+############################################################
+
+base_desc <- base_final %>%
+  select(
+    sexo.x,
+    discente_estudou_em_escola_publica,
+    status,
+    unidade_responsavel,
+    idade,
+    raca,
+    cota,
+    bolsa_assistencia,
+    bolsa_institucional
+  ) %>%
+  mutate(
+    cota = factor(cota, levels = c(0, 1), labels = c("Não", "Sim")),
+    bolsa_assistencia = factor(
+      bolsa_assistencia,
+      levels = c(0, 1),
+      labels = c("Não", "Sim")
+    ),
+    bolsa_institucional = factor(
+      bolsa_institucional,
+      levels = c(0, 1),
+      labels = c("Não", "Sim")
+    )
+  )
+
+tabela_desc <- base_desc %>%
+  tbl_summary(
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = all_continuous() ~ 2
+  ) %>%
+  bold_labels()
+
+tabela_desc
+
+tabel_raca <- base_desc %>%
+  tbl_summary(
+    by = raca,
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = all_continuous() ~ 2
+  ) %>%
+  bold_labels()
+
+tabel_raca
+
+tabel_cota <- base_desc %>%
+  tbl_summary(
+    by = cota,
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = all_continuous() ~ 2
+  ) %>%
+  bold_labels()
+
+tabel_cota
+
+tabel_unida <- base_desc %>%
+  tbl_summary(
+    by = unidade_responsavel,
+    statistic = list(
+      all_continuous() ~ "{mean} ({sd})",
+      all_categorical() ~ "{n} ({p}%)"
+    ),
+    digits = all_continuous() ~ 2
+  ) %>%
+  bold_labels()
+
+tabel_unida
+
+
+############################################################
+# 13. ANÁLISE DE SOBREVIVÊNCIA - KAPLAN-MEIER
+############################################################
+
+surv_obj <- Surv(
+  time = base_final$semestres_ate_evento,
+  event = base_final$evento
+)
+
+fit_raca <- survfit(
+  surv_obj ~ raca,
+  data = base_final
+)
+
+graf_raca <- ggsurvplot(
+  fit_raca,
+  risk.table = TRUE,
+  pval = TRUE,
+  conf.int = FALSE,
+  xlab = "Semestres",
+  ylab = "Probabilidade de permanência",
+  legend.title = "Raça/Cor",
+  legend.labs = c(
+    "Branco",
+    "Amarelo",
+    "Indígena",
+    "Pardo",
+    "Preto"
+  )
+)
+
+print(graf_raca)
+
+fit_bolsa_assistencia <- survfit(
+  surv_obj ~ bolsa_assistencia,
+  data = base_final
+)
+
+graf_bolsa_assistencia <- ggsurvplot(
+  fit_bolsa_assistencia,
+  risk.table = TRUE,
+  pval = TRUE,
+  pval.method = TRUE,
+  conf.int = FALSE,
+  xlab = "Semestres",
+  ylab = "Probabilidade de permanência",
+  legend.title = "Bolsa Assistência",
+  legend.labs = c("Não", "Sim")
+)
+
+print(graf_bolsa_assistencia)
+
+survdiff(
+  Surv(semestres_ate_evento, evento) ~ bolsa_assistencia,
+  data = base_final
+)
+
+fit_escola_publica <- survfit(
+  surv_obj ~ discente_estudou_em_escola_publica,
+  data = base_final
+)
+
+graf_escola_publica <- ggsurvplot(
+  fit_escola_publica,
+  risk.table = TRUE,
+  pval = TRUE,
+  pval.method = TRUE,
+  conf.int = FALSE,
+  xlab = "Semestres",
+  ylab = "Probabilidade de permanência",
+  legend.title = "Escola Pública",
+  legend.labs = c("Não", "Sim")
+)
+
+print(graf_escola_publica)
+
+fit_cota <- survfit(
+  surv_obj ~ cota,
+  data = base_final
+)
+
+graf_cota <- ggsurvplot(
+  fit_cota,
+  risk.table = TRUE,
+  pval = TRUE,
+  pval.method = TRUE,
+  conf.int = FALSE,
+  xlab = "Semestres",
+  ylab = "Probabilidade de permanência",
+  legend.title = "Ingresso por Cotas",
+  legend.labs = c("Não", "Sim")
+)
+
+print(graf_cota)
+
+
+############################################################
+# 14. REGRESSÃO LOGÍSTICA - EVASÃO
+############################################################
+
+modelo_logit <- glm(
+  evento ~
+    raca +
+    sexo.x +
+    idade +
+    idade2 +
+    cota +
+    bolsa_assistencia +
+    dummyescolapublica,
+  family = "binomial",
+  data = base_final
+)
+
+summary(modelo_logit)
+
+vif(modelo_logit)
+
+hoslem.test(
+  base_final$evento,
+  fitted(modelo_logit)
+)
+
+coeftest(
+  modelo_logit,
+  vcov = vcovHC(modelo_logit, type = "HC1")
+)
+
+pR2(modelo_logit)
+
+roc_obj <- roc(
+  base_final$evento,
+  fitted(modelo_logit)
+)
+
+auc(roc_obj)
+
+plot(roc_obj)
+
+
+############################################################
+# 15. REGRESSÃO LOGÍSTICA POR CENTRO
+############################################################
+
+modelos_centro <- split(
+  base_final,
+  base_final$unidade_responsavel
+)
+
+modelos_centro <- lapply(
+  modelos_centro,
+  function(df) {
+    glm(
+      evento ~
+        raca +
+        sexo.x +
+        idade +
+        idade2 +
+        cota +
+        bolsa_assistencia +
+        dummyescolapublica,
+      family = "binomial",
+      data = df
+    )
+  }
+)
+
+resultados_logit_centro <- map_df(
+  modelos_centro,
+  tidy,
+  .id = "centro"
+)
+
+resultados_logit_centro_or <- map_df(
+  modelos_centro,
+  ~ tidy(
+    .x,
+    exponentiate = TRUE,
+    conf.int = TRUE
+  ),
+  .id = "centro"
+)
+
+resultados_logit_centro
+resultados_logit_centro_or
+
+
+############################################################
+# 16. MODELO DE COX
+############################################################
+
+modelo_cox <- coxph(
+  Surv(semestres_ate_evento, evento) ~
+    raca +
+    cota +
+    sexo.x +
+    idade +
+    idade2 +
+    dummyescolapublica +
+    bolsa_assistencia,
+  data = base_final
+)
+
+summary(modelo_cox)
+
+teste_ph <- cox.zph(modelo_cox)
+
+teste_ph
+
+plot(teste_ph)
+
+modelo_cox_rob <- coxph(
+  Surv(semestres_ate_evento, evento) ~
+    raca +
+    cota +
+    sexo.x +
+    idade +
+    idade2 +
+    dummyescolapublica +
+    bolsa_assistencia,
+  data = base_final,
+  robust = TRUE
+)
+
+summary(modelo_cox_rob)
+
+cox_strat <- coxph(
+  Surv(semestres_ate_evento, evento) ~
+    raca +
+    cota +
+    sexo.x +
+    idade +
+    idade2 +
+    dummyescolapublica +
+    bolsa_assistencia +
+    strata(unidade_responsavel),
+  data = base_final
+)
+
+summary(cox_strat)
+
+cox.zph(cox_strat)
+
+
+############################################################
+# 17. CONSTRUÇÃO DAS NOTAS DAS DISCIPLINAS
+############################################################
+
+disciplinas <- base_final %>%
+  select(
+    matricula,
+    notas_disciplinas
+  )
+
+#str(disciplinas)
+disciplinas_long <- disciplinas %>%
+  mutate(
+    notas_disciplinas = str_remove_all(
+      notas_disciplinas,
+      "^\\{|\\}$"
+    )
+  ) %>%
+  separate_rows(
+    notas_disciplinas,
+    sep = "\",\""
+  ) %>%
+  extract(
+    notas_disciplinas,
+    into = c(
+      "semestre",
+      "codigo",
+      "disciplina",
+      "media"
+    ),
+    regex = "^([0-9]{4}\\.[12]) - ([A-Z0-9]+) - (.*) - Média: (.*)$",
+    remove = FALSE
+  ) %>%
+  mutate(
+    media = ifelse(media == "-", NA, media),
+    media = as.numeric(media),
+    notas_disciplinas = str_replace_all(
+      notas_disciplinas,
+      '"',
+      ""
+    )
+  )
+#str(disciplinas_long)
+cr_semestre <- disciplinas_long %>%
+  group_by(
+    matricula,
+    semestre
+  ) %>%
+  summarise(
+    cr_semestre = mean(media, na.rm = TRUE),
+    n_disciplinas = sum(!is.na(media)),
+    .groups = "drop"
+  )
+
+#investigando o indicador por numero de disciplina
+#cr_semestre2 <- cr_semestre %>%
+#  filter(n_disciplinas > 0)
+#summary(cr_semestre2$n_disciplinas)
+#table(cr_semestre2$n_disciplinas)
+
+
+cr_acumulado <- disciplinas_long %>%
+  group_by(matricula) %>%
+  summarise(
+    cr_acumulado = mean(media, na.rm = TRUE),
+    .groups = "drop"
+  )
+#str(cr_acumulado)
+
+############################################################
+# VERIFICAÇÃO METODOLÓGICA DO CR ACUMULADO
+# Número de disciplinas cursadas por estudante
+############################################################
+
+# 1. Total de disciplinas com nota válida por estudante
+disciplinas_por_aluno <- cr_semestre %>%
+  filter(n_disciplinas > 0) %>%
+  group_by(matricula) %>%
+  summarise(
+    total_disciplinas = sum(n_disciplinas, na.rm = TRUE),
+    media_disciplinas_semestre = mean(n_disciplinas, na.rm = TRUE),
+    n_semestres_com_nota = n(),
+    .groups = "drop"
+  )
+
+# 2. Juntar com base_mismatch
+base_mismatch_validacao <- base_mismatch %>%
+  left_join(
+    disciplinas_por_aluno,
+    by = "matricula"
+  )
+
+# 3. Descritiva por cota
+base_mismatch_validacao %>%
+  group_by(cota) %>%
+  summarise(
+    media_total_disciplinas = mean(total_disciplinas, na.rm = TRUE),
+    dp_total_disciplinas = sd(total_disciplinas, na.rm = TRUE),
+    media_disciplinas_semestre = mean(media_disciplinas_semestre, na.rm = TRUE),
+    dp_disciplinas_semestre = sd(media_disciplinas_semestre, na.rm = TRUE),
+    media_semestres_com_nota = mean(n_semestres_com_nota, na.rm = TRUE),
+    n = n(),
+    .groups = "drop"
+  )
+
+# 4. Teste t para total de disciplinas
+t.test(
+  total_disciplinas ~ cota,
+  data = base_mismatch_validacao
+)
+
+# 5. Teste t para média de disciplinas por semestre
+t.test(
+  media_disciplinas_semestre ~ cota,
+  data = base_mismatch_validacao
+)
+
+# 6. Correlação entre CR acumulado e número de disciplinas
+cor.test(
+  base_mismatch_validacao$cr_acumulado,
+  base_mismatch_validacao$total_disciplinas,
+  use = "complete.obs"
+)
+
+cor.test(
+  base_mismatch_validacao$cr_acumulado,
+  base_mismatch_validacao$media_disciplinas_semestre,
+  use = "complete.obs"
+)
+
+# 7. Modelo verificando se o efeito de cota muda ao controlar por número de disciplinas
+modelo_mqo_validacao <- lm(
+  cr_acumulado ~
+    cota +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    total_disciplinas+
+    unidade_responsavel,
+  data = base_mismatch_validacao
+)
+
+summary(modelo_mqo_validacao)
+#table(base_mismatch$unidade_responsavel)
+# 8. Modelo com ENEM e número de disciplinas
+modelo_mqo_enem_validacao <- lm(
+  cr_acumulado ~
+    cota +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    total_disciplinas+
+    unidade_responsavel,
+  data = base_mismatch_validacao
+)
+
+summary(modelo_mqo_enem_validacao)
+
+# 9. Comparar com seus modelos principais
+summary(modelo_mqo)
+summary(modelo_mqo_validacao)
+
+summary(modelo_mqo_enem)
+summary(modelo_mqo_enem_validacao)
+
+str(base_final)
+############################################################
+# 18. BASE PARA ANÁLISE DE MISMATCH
+############################################################
+
+base_mismatch <- base_final %>%
+  left_join(
+    cr_acumulado,
+    by = "matricula"
+  )
+
+vercanc <- base_mismatch %>% 
+  select("data_cancelamento","data_trancamento","status",
+         "cr_acumulado") %>% filter(status != "CONCLUÍDO")
+
+mean(vercanc$cr_acumulado, na.rm = T)
+
+#table(vercanc$status)
+#colnames(base_mismatch)
+#saveRDS(base_mismatch, "base_mismatch_dissertacao.rds")
+#saveRDS(cr_semestre, "cr_semestre_dissertacao.rds")
+
+
+############################################################
+# 19. BLOCO 1 - DIFERENÇAS INICIAIS DE DESEMPENHO
+############################################################
+
+#resultado 4.2 tabela de media
+t.test(
+  cr_acumulado ~ cota,
+  data = base_mismatch
+)
+
+modelo_mqo <- lm(
+  cr_acumulado ~
+    cota +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional+
+    unidade_responsavel+
+    semestre,
+  data = base_mismatch
+)
+
+summary(modelo_mqo)
+
+
+############################################################
+# 20. BLOCO 2 - CONTROLE PELO ENEM
+############################################################
+
+colSums(
+  is.na(
+    base_mismatch[, c(
+      "nota_l",
+      "nota_ch",
+      "nota_cn",
+      "nota_m",
+      "nota_r"
+    )]
+  )
+)
+
+sum(
+  complete.cases(
+    base_mismatch[, c(
+      "nota_l",
+      "nota_ch",
+      "nota_cn",
+      "nota_m",
+      "nota_r"
+    )]
+  )
+)
+
+table(
+  base_mismatch$cota,
+  is.na(base_mismatch$nota_l)
+)
+
+prop.table(
+  table(
+    base_mismatch$cota,
+    is.na(base_mismatch$nota_l)
+  ),
+  1
+)
+
+base_mismatch$enem_media <- rowMeans(
+  base_mismatch[, c(
+    "nota_l",
+    "nota_ch",
+    "nota_cn",
+    "nota_m",
+    "nota_r"
+  )],
+  na.rm = FALSE
+)
+
+summary(base_mismatch$enem_media)
+
+aggregate(
+  enem_media ~ cota,
+  data = base_mismatch,
+  mean,
+  na.rm = TRUE
+)
+
+t.test(
+  enem_media ~ cota,
+  data = base_mismatch
+)
+
+cor.test(
+  base_mismatch$enem_media,
+  base_mismatch$cr_acumulado
+)
+
+grafico_enem_cr <- ggplot(
+  base_mismatch,
+  aes(
+    x = enem_media,
+    y = cr_acumulado
+  )
+) +
+  geom_point(alpha = 0.15) +
+  geom_smooth(method = "lm") +
+  annotate(
+    "text",
+    x = 800,
+    y = 1,
+    label = "r = 0,243\np < 0,001",
+    hjust = 1,
+    size = 5
+  ) +
+  labs(
+    x = "Nota média no ENEM",
+    y = "CR acumulado"
+  )
+
+grafico_enem_cr
+
+modelo_mqo_enem <- lm(
+  cr_acumulado ~
+    cota +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional+
+    unidade_responsavel+
+    semestre,
+  data = base_mismatch
+)
+
+summary(modelo_mqo_enem)
+
+
+############################################################
+# 21. BLOCO 3 - PAREAMENTO POR ESCORE DE PROPENSÃO
+############################################################
+
+dados_psm <- base_mismatch %>%
+  filter(
+    complete.cases(
+      cota,
+      enem_media,
+      sexo.x,
+      raca,
+      idade_ingresso,
+      cr_acumulado
+    )
+  )
+
+psm <- matchit(
+  cota ~
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso,
+  data = dados_psm,
+  method = "nearest",
+  ratio = 1
+)
+
+summary(psm)
+
+love.plot(
+  psm,
+  threshold = 0.1
+)
+
+psm2 <- matchit(
+  cota ~
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso,
+  data = dados_psm,
+  method = "nearest",
+  ratio = 1,
+  caliper = 0.2
+)
+
+summary(psm2)
+
+dados_match <- match.data(psm2)
+
+table(dados_match$cota)
+
+t.test(
+  cr_acumulado ~ cota,
+  data = dados_match
+)
+
+modelo_psm <- lm(
+  cr_acumulado ~ cota,
+  data = dados_match
+)
+
+summary(modelo_psm)
+
+modelo_psm2 <- lm(
+  cr_acumulado ~
+    cota +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso,
+  data = dados_match
+)
+
+summary(modelo_psm2)
+
+love_plot_psm <- love.plot(
+  psm2,
+  threshold = 0.1,
+  abs = FALSE,
+  var.order = "unadjusted",
+  var.names = c(
+    distance = "Escore de Propensão",
+    enem_media = "Nota média do ENEM",
+    "sexo.x_Masculino" = "Sexo (Masculino)",
+    raca_Branco = "Raça: Branco",
+    "raca_Amarelo (de origem oriental)" = "Raça: Amarelo",
+    raca_Indígena = "Raça: Indígena",
+    raca_Pardo = "Raça: Pardo",
+    raca_Preto = "Raça: Preto",
+    idade_ingresso = "Idade de Ingresso"
+  ),
+  sample.names = c(
+    "Antes do Pareamento",
+    "Após Pareamento"
+  ),
+  title = "Balanceamento das Covariáveis Antes e Após o Pareamento",
+  stars = "raw",
+  xlab = "Diferenças Médias Padronizadas (SMD)"
+)
+
+love_plot_psm
+
+saveRDS(dados_match, "dados_match_dissertacao.rds")
+
+
+# 21.1 Base completa para o PSM ----------------------------------------
+
+dados_psm <- base_mismatch %>%
+  filter(
+    complete.cases(
+      cota,
+      enem_media,
+      sexo.x,
+      raca,
+      idade_ingresso,
+      cr_acumulado
+    )
+  )
+
+table(dados_psm$cota)
+
+
+# 21.2 Pareamento sem caliper ------------------------------------------
+
+psm_nn <- matchit(
+  cota ~ enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso ,
+  data = dados_psm,
+  method = "nearest",
+  ratio = 1
+)
+
+summary(psm_nn)
+
+
+# 21.3 Pareamento com caliper ------------------------------------------
+
+psm_caliper <- matchit(
+  cota ~ enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso ,
+  data = dados_psm,
+  method = "nearest",
+  ratio = 1,
+  caliper = 0.2
+)
+
+summary(psm_caliper)
+
+
+# 21.4 Tabela 9 - Tamanho das amostras ---------------------------------
+
+summary(psm_nn)
+summary(psm_caliper)
+
+dados_match <- match.data(psm_caliper)
+
+table(dados_match$cota)
+
+
+# 21.5 Tabela 10 - Balanceamento das covariáveis -----------------------
+
+bal_nn <- bal.tab(psm_nn, un = TRUE)
+bal_caliper <- bal.tab(psm_caliper, un = TRUE)
+
+bal_nn
+bal_caliper
+
+
+# 21.6 Gráfico - Love plot ---------------------------------------------
+
+love_plot_psm <- love.plot(
+  psm_caliper,
+  threshold = 0.1,
+  abs = FALSE,
+  var.order = "unadjusted",
+  var.names = c(
+    distance = "Escore de Propensão",
+    enem_media = "Nota média do ENEM",
+    "sexo.x_Masculino" = "Sexo (Masculino)",
+    "raca_Amarelo (de origem oriental)" = "Raça: Amarelo",
+    raca_Indígena = "Raça: Indígena",
+    raca_Pardo = "Raça: Pardo",
+    raca_Preto = "Raça: Preto",
+    #dummyescolapublica = "Escola pública",
+    idade_ingresso = "Idade de ingresso"
+  ),
+  sample.names = c(
+    "Antes do Pareamento",
+    "Após Pareamento"
+  ),
+  title = "Balanceamento das Covariáveis Antes e Após o Pareamento",
+  stars = "raw",
+  xlab = "Diferenças Médias Padronizadas (SMD)"
+)
+
+love_plot_psm
+
+
+# 21.7 Teste de diferença de médias após o pareamento -------------------
+
+t.test(
+  cr_acumulado ~ cota,
+  data = dados_match
+)
+
+
+# 21.8 Tabela 11 - MQO após o pareamento --------------------------------
+
+modelo_psm_simples <- lm(
+  cr_acumulado ~ cota,
+  data = dados_match
+)
+
+summary(modelo_psm_simples)
+
+
+modelo_psm_controles <- lm(
+  cr_acumulado ~
+    cota +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica+
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel +
+    semestre,
+  data = dados_match
+)
+
+summary(modelo_psm_controles)
+
+
+############################################################
+# 22. CATCH-UP - CONSTRUÇÃO DO PAINEL
+############################################################
+
+#construindo o painel - aqui ta top
+painel_catchup1 <- cr_semestre %>%
+  filter(
+    !is.na(matricula),
+    !is.na(semestre),
+    !is.na(cr_semestre),
+    !is.nan(cr_semestre),
+    n_disciplinas > 0
+  ) %>%
+  arrange(
+    matricula,
+    semestre
+  ) %>%
+  group_by(matricula) %>%
+  mutate(
+    tempo = row_number()
+  ) %>%
+  ungroup()
+
+
+#proximo passo
+base_caracteristicas <- base_mismatch %>%
+  filter(!is.na(matricula)) %>%
+  select(
+    matricula,
+    cota,
+    enem_media,
+    sexo.x,
+    raca,
+    idade_ingresso,
+    dummyescolapublica,
+    bolsa_assistencia,
+    bolsa_institucional,
+    unidade_responsavel,
+    ano_ingresso,
+    periodo_ingresso
+  ) %>%
+  distinct(matricula, .keep_all = TRUE)
+
+
+#juntando como painel
+painel_catchup <- painel_catchup1 %>%
+  left_join(
+    base_caracteristicas,
+    by = "matricula",
+    relationship = "many-to-one"
+  )
+
+
+painel_catchup %>%
+  summarise(
+    sem_cota = sum(is.na(cota)),
+    sem_enem = sum(is.na(enem_media)),
+    sem_sexo = sum(is.na(sexo.x)),
+    sem_raca = sum(is.na(raca)),
+    sem_idade = sum(is.na(idade_ingresso)),
+    sem_centro = sum(is.na(unidade_responsavel))
+  )
+
+
+# Amostra completa com CR semestral válido
+painel_total <- painel_catchup
+
+# Amostra com informações completas para o modelo com ENEM
+painel_total_enem <- painel_catchup %>%
+  filter(
+    complete.cases(
+      cota,
+      tempo,
+      cr_semestre,
+      enem_media,
+      sexo.x,
+      raca,
+      idade_ingresso,
+      dummyescolapublica,
+      bolsa_assistencia,
+      bolsa_institucional,
+      unidade_responsavel
+    )
+  )
+
+# Amostra pareada pelo PSM com caliper
+painel_match <- painel_catchup %>%
+  filter(
+    matricula %in% dados_match$matricula
+  )
+
+
+
+
+############################################################
+# TABELA DESCRITIVA - EVOLUÇÃO DO CR AO LONGO DOS SEMESTRES
+############################################################
+
+tabela_catchup <- painel_total %>%
+  group_by(
+    tempo,
+    cota
+  ) %>%
+  summarise(
+    estudantes = n_distinct(matricula),
+    cr_medio = mean(
+      cr_semestre,
+      na.rm = TRUE
+    ),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    grupo = ifelse(
+      cota == 1,
+      "Cotistas",
+      "Não cotistas"
+    )
+  ) %>%
+  select(
+    tempo,
+    grupo,
+    estudantes,
+    cr_medio
+  )
+
+tabela_catchup <- painel_total %>%
+  group_by(
+    tempo,
+    cota
+  ) %>%
+  summarise(
+    estudantes = n_distinct(matricula),
+    cr_medio = mean(cr_semestre, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    grupo = if_else(
+      cota == 1,
+      "cotistas",
+      "nao_cotistas"
+    )
+  ) %>%
+  select(
+    tempo,
+    grupo,
+    estudantes,
+    cr_medio
+  ) %>%
+  pivot_wider(
+    names_from = grupo,
+    values_from = c(
+      estudantes,
+      cr_medio
+    )
+  ) %>%
+  mutate(
+    diferenca =
+      cr_medio_cotistas -
+      cr_medio_nao_cotistas,
+    
+    cr_medio_nao_cotistas =
+      round(cr_medio_nao_cotistas, 3),
+    
+    cr_medio_cotistas =
+      round(cr_medio_cotistas, 3),
+    
+    diferenca =
+      round(diferenca, 3)
+  ) %>%
+  rename(
+    `Semestre cursado` = tempo,
+    `N não cotistas` = estudantes_nao_cotistas,
+    `CR não cotistas` = cr_medio_nao_cotistas,
+    `N cotistas` = estudantes_cotistas,
+    `CR cotistas` = cr_medio_cotistas,
+    `Diferença` = diferenca
+  )
+
+print(tabela_catchup, n = Inf)
+
+#as regressões resultados 
+
+#sem o Enem
+modelo_catchup1 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_total
+)
+
+summary(modelo_catchup1)
+
+#com ENEM (prepação previa)
+modelo_catchup2 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_total_enem
+)
+
+summary(modelo_catchup2)
+
+#e agora utilazando o modelo de painel Pareado
+modelo_catchup3 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_match
+)
+
+summary(modelo_catchup3)
+
+
+#realizando o modo clusterizados
+#mod 1
+modelo_catchup1 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_total
+)
+
+coeftest(
+  modelo_catchup1,
+  vcov = vcovCL(
+    modelo_catchup1,
+    cluster = ~matricula
+  )
+)
+
+#mod 2
+modelo_catchup2 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_total_enem
+)
+
+coeftest(
+  modelo_catchup2,
+  vcov = vcovCL(
+    modelo_catchup2,
+    cluster = ~matricula
+  )
+)
+
+#mod 3
+modelo_catchup3 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_match
+)
+
+coeftest(
+  modelo_catchup3,
+  vcov = vcovCL(
+    modelo_catchup3,
+    cluster = ~matricula
+  )
+)
+
+
+#organizando o resultado para a tabela
+vcov1 <- vcovCL(
+  modelo_catchup1,
+  cluster = ~matricula
+)
+
+vcov2 <- vcovCL(
+  modelo_catchup2,
+  cluster = ~matricula
+)
+
+vcov3 <- vcovCL(
+  modelo_catchup3,
+  cluster = ~matricula
+)
+
+coeftest(modelo_catchup1, vcov = vcov1)
+
+coeftest(modelo_catchup2, vcov = vcov2)
+
+coeftest(modelo_catchup3, vcov = vcov3)
+
+
+#fazendo o teste de robustez
+painel_total_8 <- painel_total %>%
+  filter(tempo <= 8)
+
+painel_total_enem_8 <- painel_total_enem %>%
+  filter(tempo <= 8)
+
+painel_match_8 <- painel_match %>%
+  filter(tempo <= 8)
+
+painel_total_6 <- painel_total %>%
+  filter(tempo <= 6)
+
+painel_total_enem_6 <- painel_total_enem %>%
+  filter(tempo <= 6)
+
+painel_match_6 <- painel_match %>%
+  filter(tempo <= 6)
+
+
+tibble(
+  
+  Base = c(
+    "Completa",
+    "Completa ENEM",
+    "Pareada"
+  ),
+  
+  Original = c(
+    nrow(painel_total),
+    nrow(painel_total_enem),
+    nrow(painel_match)
+  ),
+  
+  Tempo_ate_8 = c(
+    nrow(painel_total_8),
+    nrow(painel_total_enem_8),
+    nrow(painel_match_8)
+  )
+  
+)
+
+modelo_catchup1_8 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_total_8
+)
+
+coeftest(
+  modelo_catchup1_8,
+  vcov = vcovCL(
+    modelo_catchup1_8,
+    cluster = ~matricula
+  )
+)
+
+modelo_catchup2_8 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_total_enem_8
+)
+
+coeftest(
+  modelo_catchup2_8,
+  vcov = vcovCL(
+    modelo_catchup2_8,
+    cluster = ~matricula
+  )
+)
+
+
+modelo_catchup3_8 <- lm(
+  cr_semestre ~
+    cota * tempo +
+    enem_media +
+    sexo.x +
+    raca +
+    idade_ingresso +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    unidade_responsavel,
+  data = painel_match_8
+)
+
+coeftest(
+  modelo_catchup3_8,
+  vcov = vcovCL(
+    modelo_catchup3_8,
+    cluster = ~matricula
+  )
+)
+
+# 24. CATCH-UP - GRÁFICOS para verificar a linearidade
+tabela_linearidade <-
+  painel_total %>%
+  group_by(
+    tempo,
+    cota
+  ) %>%
+  summarise(
+    cr_medio = mean(cr_semestre),
+    n = n(),
+    .groups = "drop"
+  )
+
+
+ggplot(
+  tabela_linearidade,
+  aes(
+    x = tempo,
+    y = cr_medio,
+    color = factor(cota)
+  )
+) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  scale_color_manual(
+    values = c("#1F77B4", "#D62728"),
+    labels = c(
+      "Não cotistas",
+      "Cotistas"
+    )
+  ) +
+  scale_x_continuous(
+    breaks = 1:10
+  ) +
+  labs(
+    x = "Semestre cursado",
+    y = "CR médio",
+    color = ""
+  ) +
+  theme_minimal(base_size = 14)
+
+
+#hipotese de Linearidade então posso considerar 
+ggplot(
+  tabela_linearidade,
+  aes(
+    x = tempo,
+    y = cr_medio,
+    color = factor(cota)
+  )
+) +
+  geom_point(size = 3) +
+  
+  geom_smooth(
+    method = "loess",
+    se = FALSE,
+    linewidth = 1.2
+  ) +
+  
+  geom_smooth(
+    method = "lm",
+    linetype = 2,
+    se = FALSE
+  ) +
+  
+  scale_color_manual(
+    values = c("#1F77B4", "#D62728"),
+    labels = c(
+      "Não cotistas",
+      "Cotistas"
+    )
+  ) +
+  
+  scale_x_continuous(
+    breaks = 1:10
+  ) +
+  
+  labs(
+    x = "Semestre cursado",
+    y = "CR médio",
+    color = ""
+  ) +
+  
+  theme_minimal(base_size = 14)
+
+getwd()
+
+############################################################
+# 26. SALVANDO OBJETOS FINAIS
+############################################################
+
+#saveRDS(painel_catchup, "painel_catchup_dissertacao.rds")
+#saveRDS(painel_total, "painel_total_dissertacao.rds")
+#saveRDS(painel_match, "painel_match_dissertacao.rds")
+
+#saveRDS(modelo_mqo, "modelo_mqo.rds")
+#saveRDS(modelo_mqo_enem, "modelo_mqo_enem.rds")
+#saveRDS(modelo_psm2, "modelo_psm2.rds")
+#saveRDS(modelo_catchup_total, "modelo_catchup_total.rds")
+#saveRDS(modelo_catchup_match, "modelo_catchup_match.rds")
+#saveRDS(modelo_cox, "modelo_cox.rds")
+#saveRDS(modelo_cox_rob, "modelo_cox_rob.rds")
+
+############################################################
+# FIM DO SCRIPT
+############################################################
