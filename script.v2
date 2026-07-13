@@ -418,6 +418,14 @@ tabel_unida
 ############################################################
 # 13. ANÁLISE DE SOBREVIVÊNCIA - KAPLAN-MEIER
 ############################################################
+#verificando se esta tudo ok 
+table(base_final$evento)
+table(base_final$status, base_final$evento)
+summary(base_final$semestres_ate_evento)
+table(base_final$semestres_ate_evento)
+summary(fit_cota)
+base_final %>%
+  filter(semestres_ate_evento==1)
 
 surv_obj <- Surv(
   time = base_final$semestres_ate_evento,
@@ -508,6 +516,21 @@ graf_cota <- ggsurvplot(
   legend.labs = c("Não", "Sim")
 )
 
+
+#png(
+#  filename = "kaplan_cota.png",
+#  width = 2200,
+#  height = 1800,
+#  res = 300
+#)
+
+#print(graf_cota)
+
+#dev.off()
+
+getwd()
+
+
 print(graf_cota)
 
 
@@ -515,47 +538,251 @@ print(graf_cota)
 # 14. REGRESSÃO LOGÍSTICA - EVASÃO
 ############################################################
 
-modelo_logit <- glm(
+#ajustes para regressão
+# Centralização da idade de ingresso
+# (reduz a colinearidade entre idade e idade²)
+
+base_final <- base_final %>%
+  mutate(
+    idade_ingresso_c =
+      idade_ingresso -
+      mean(idade_ingresso, na.rm = TRUE),
+    
+    idade_ingresso_c2 =
+      idade_ingresso_c^2
+  )
+
+# Ano de ingresso como fator
+base_final$ano_ingresso <- factor(base_final$ano_ingresso)
+
+
+# 14.2 Modelo 1
+# Características individuais
+# (utilizado apenas para verificar a evolução do coeficiente
+# da variável cota)
+
+
+logit_m1 <- glm(
   evento ~
-    raca +
-    sexo.x +
-    idade +
-    idade2 +
     cota +
-    bolsa_assistencia +
-    dummyescolapublica,
-  family = "binomial",
+    sexo.x +
+    raca +
+    idade_ingresso_c +
+    idade_ingresso_c2,
+  family = binomial(link = "logit"),
   data = base_final
 )
 
-summary(modelo_logit)
+summary(logit_m1)
 
-vif(modelo_logit)
 
-hoslem.test(
+# 14.3 Modelo 2 (MODELO PRINCIPAL)
+# Acrescenta características institucionais e coorte
+#
+# Este será o modelo apresentado na dissertação.
+
+logit_principal <- glm(
+  evento ~
+    cota +
+    sexo.x +
+    raca +
+    idade_ingresso_c +
+    idade_ingresso_c2 +
+    dummyescolapublica +
+    ano_ingresso +
+    unidade_responsavel,
+  family = binomial(link = "logit"),
+  data = base_final
+)
+
+summary(logit_principal)
+
+# Razão de chances (Odds Ratios)
+
+exp(
+  cbind(
+    OR = coef(logit_principal),
+    confint(logit_principal)
+  )
+)
+
+
+# Diagnósticos do modelo principal
+
+
+# Multicolinearidade
+
+car::vif(logit_principal)
+
+# Ajuste do modelo
+
+ResourceSelection::hoslem.test(
   base_final$evento,
-  fitted(modelo_logit)
+  fitted(logit_principal),
+  g = 10
 )
 
-coeftest(
-  modelo_logit,
-  vcov = vcovHC(modelo_logit, type = "HC1")
+
+# 14.4 Modelo de Robustez
+# Acrescenta ENEM
+#
+# Objetivo:
+# verificar se os resultados permanecem quando
+# controlamos a habilidade acadêmica inicial.
+#
+# Não será o modelo principal porque reduz
+# significativamente a amostra.
+
+
+logit_enem <- glm(
+  evento ~
+    cota +
+    sexo.x +
+    raca +
+    idade_ingresso_c +
+    idade_ingresso_c2 +
+    dummyescolapublica +
+    ano_ingresso +
+    unidade_responsavel +
+    enem_media,
+  family = binomial(link = "logit"),
+  data = base_mismatch
 )
 
-pR2(modelo_logit)
+summary(logit_enem)
 
-roc_obj <- roc(
-  base_final$evento,
-  fitted(modelo_logit)
+exp(
+  cbind(
+    OR = coef(logit_enem),
+    confint(logit_enem)
+  )
 )
 
-auc(roc_obj)
+library(gtsummary)
 
-plot(roc_obj)
+tbl_merge(
+  tbls = list(
+    tbl_regression(logit_principal, exponentiate = TRUE),
+    tbl_regression(logit_enem, exponentiate = TRUE)
+  ),
+  tab_spanner = c(
+    "**Modelo Principal**",
+    "**Robustez (ENEM)**"
+  )
+)
+
+
+
+exp(cbind(
+  OR = coef(logit_sem_bolsas),
+  confint(logit_sem_bolsas)
+))
+
+exp(cbind(
+  OR = coef(logit_modelo5),
+  confint(logit_modelo5)
+))
+
+summary(logit_sem_bolsas)
+summary(logit_modelo5)
+
+# 14.5 Modelos exploratórios (NÃO UTILIZADOS NA DISSERTAÇÃO)
+
+
+# Esses modelos foram estimados para investigar
+# o efeito da inclusão das variáveis de assistência
+# estudantil e bolsas institucionais.
+#
+# Como a base não informa o momento de concessão
+# dos benefícios, essas variáveis podem representar
+# mecanismos posteriores ao ingresso.
+#
+# Dessa forma, optou-se por não utilizá-las
+# como especificação principal.
+
+
+# Modelo com assistência estudantil
+
+logit_assistencia <- glm(
+  evento ~
+    cota +
+    sexo.x +
+    raca +
+    idade_ingresso_c +
+    idade_ingresso_c2 +
+    dummyescolapublica +
+    bolsa_assistencia +
+    ano_ingresso +
+    unidade_responsavel,
+  family = binomial(link = "logit"),
+  data = base_final
+)
+
+# Modelo com assistência + bolsa institucional
+
+logit_bolsas <- glm(
+  evento ~
+    cota +
+    sexo.x +
+    raca +
+    idade_ingresso_c +
+    idade_ingresso_c2 +
+    dummyescolapublica +
+    bolsa_assistencia +
+    bolsa_institucional +
+    ano_ingresso +
+    unidade_responsavel,
+  family = binomial(link = "logit"),
+  data = base_final
+)
+
+
+# Comparações exploratórias
+
+
+summary(logit_assistencia)
+
+summary(logit_bolsas)
+
+
+# Associação entre bolsas
+
+table(
+  base_final$bolsa_assistencia,
+  base_final$bolsa_institucional
+)
+
+prop.table(
+  table(
+    base_final$bolsa_assistencia,
+    base_final$bolsa_institucional
+  ),
+  1
+)
+
+
+# Associação entre cota e bolsas
+
+prop.table(
+  table(
+    base_final$cota,
+    base_final$bolsa_assistencia
+  ),
+  1
+)
+
+prop.table(
+  table(
+    base_final$cota,
+    base_final$bolsa_institucional
+  ),
+  1
+)
+
 
 
 ############################################################
-# 15. REGRESSÃO LOGÍSTICA POR CENTRO
+# 15. REGRESSÃO LOGÍSTICA POR CENTRO (não utilizados)
 ############################################################
 
 modelos_centro <- split(
